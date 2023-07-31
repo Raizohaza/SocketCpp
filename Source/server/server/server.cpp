@@ -9,8 +9,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <mutex>
 
-#define _CRT_SECURE_NO_WARNINGS
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -21,6 +21,8 @@
 CWinApp theApp;
 
 using namespace std;
+
+mutex mtx;
 
 struct Ticket
 {
@@ -90,14 +92,14 @@ void Fileread(string filename, Info &thongtinve)
 	fclose(f);
 }
 
-void BuyTicket(CSocket* sockClients, int id,Info &thongtinve)
+void BuyTicket(CSocket* sockClients, int id, Info& thongtinve)
 {
 	int kt;
 	Booking data;
 	int i = id;
 	do
 	{
-		//nhan thong tin tu client
+		// Nhan thong tin tu client
 		sockClients->Receive((char*)&data, sizeof(data), 0);
 
 		cout << "Nhap Ten chuyen tau: " << data.name;
@@ -152,16 +154,21 @@ void BuyTicket(CSocket* sockClients, int id,Info &thongtinve)
 				break;
 		}
 
-		sockClients->Send((char*)&total, sizeof(total));
+		sockClients->Send((char*)&total, sizeof(total), 0);
 		if (total == -1)
-			sockClients->Send((char*)&flag, sizeof(flag));
+			sockClients->Send((char*)&flag, sizeof(flag), 0);
 		sockClients->Receive((char*)&kt, sizeof(kt), 0);
-		if(kt == 89 || kt == 121)
-			//Send so luong ve cho client
+		if (kt == 89 || kt == 121)
+		{
+			// Lock the mutex before sending shared data
+			std::lock_guard<std::mutex> lock(mtx);
+			// Send thongtinve to the client
 			sockClients->Send((char*)&thongtinve, sizeof(thongtinve), 0);
+		}
 	} while (kt == 89 || kt == 121);
 	//stop = true;
 }
+
 
 void HandleClient(CSocket* sockClient, int id, Info &thongtinve)
 {
@@ -204,7 +211,6 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 		Info thongtinve;
 		string filename = "input.txt";
 		Fileread(filename, thongtinve);
-
 		//Tao mang chua cac socket client
 		CSocket* sockClients = new CSocket[num_client];
 		std::vector<std::thread> clientThreads;
@@ -217,7 +223,7 @@ int _tmain(int argc, TCHAR* argv[], TCHAR* envp[])
 			sockClients[i].Send((char*)&i, sizeof(int), 0);
 			//Send so luong ve cho client
 			sockClients[i].Send((char*)&thongtinve, sizeof(thongtinve), 0);
-			clientThreads.emplace_back(HandleClient, &sockClients[i], i, thongtinve);
+			clientThreads.emplace_back(HandleClient, &sockClients[i], i, std::ref(thongtinve));
 		}
 
 		int count = 0;
